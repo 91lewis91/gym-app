@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Lewis's Training Log</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── CONTENT ───────────────────────────────────────────── -->
+  <div id="content">
+
+    <!-- TODAY -->
+    <div id="screen-today" class="screen">
+      <div class="greeting" id="greeting">Good morning, Lewis 👋</div>
+      <div class="greeting-sub" id="date-sub"></div>
+
+      <!-- Next workout card -->
+      <div class="next-card">
+        <div class="next-label">Next workout</div>
+        <div class="next-name" id="today-name">💪 Day A — Push</div>
+        <div class="next-muscles" id="today-muscles">Chest · Shoulders · Triceps</div>
+        <button class="btn btn-primary btn-block" id="btn-start-next">Start Workout</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat"><div class="stat-val" id="stat-week">0</div><div class="stat-lbl">This week</div></div>
+        <div class="stat"><div class="stat-val" id="stat-streak">0</div><div class="stat-lbl">Streak</div></div>
+        <div class="stat"><div class="stat-val" id="stat-total">0</div><div class="stat-lbl">Total</div></div>
+      </div>
+
+      <!-- Weight log -->
+      <div class="card">
+        <div class="card-title">Today's weight</div>
+        <div id="weight-log-form" style="display:flex;gap:8px;align-items:center">
+          <input id="weight-in" class="input" type="number" inputmode="decimal" placeholder="e.g. 96.5" step="0.1" style="flex:1">
+          <button class="btn btn-primary btn-sm" id="btn-log-weight">Log</button>
+        </div>
+        <div id="weight-logged" style="display:none;align-items:baseline;gap:8px">
+          <span class="weight-display" id="weight-today">—</span>
+          <span class="weight-unit">kg</span>
+          <button class="btn btn-ghost btn-sm" id="btn-reweight" style="margin-left:auto">Change</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- WORKOUT SELECT -->
+    <div id="screen-workout" class="screen">
+      <div class="ph"><span class="ph-title">Workouts</span></div>
+      <div class="prog-card" data-prog="push">
+        <div class="prog-emoji">💪</div>
+        <div class="prog-info">
+          <div class="prog-name">Day A — Push</div>
+          <div class="prog-muscles">Chest · Shoulders · Triceps</div>
+        </div>
+        <span class="prog-arrow">›</span>
+      </div>
+      <div class="prog-card" data-prog="pull">
+        <div class="prog-emoji">🔙</div>
+        <div class="prog-info">
+          <div class="prog-name">Day B — Pull</div>
+          <div class="prog-muscles">Back · Biceps · Rear Delts</div>
+        </div>
+        <span class="prog-arrow">›</span>
+      </div>
+      <div class="prog-card" data-prog="legs">
+        <div class="prog-emoji">🦵</div>
+        <div class="prog-info">
+          <div class="prog-name">Day C — Legs + Core</div>
+          <div class="prog-muscles">Quads · Hamstrings · Glutes · Core</div>
+        </div>
+        <span class="prog-arrow">›</span>
+      </div>
+      <div class="divider"></div>
+      <button class="btn btn-secondary btn-block" id="btn-log-cycling">🚴 Log Cycling Session</button>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="screen-history" class="screen">
+      <div class="ph"><span class="ph-title">History</span></div>
+      <div id="hist-list"></div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div id="screen-progress" class="screen">
+      <div class="ph"><span class="ph-title">Progress</span></div>
+
+      <div class="card">
+        <div class="card-title">Bodyweight</div>
+        <div class="chart-wrap"><canvas id="weight-chart"></canvas></div>
+        <div class="chart-empty" id="weight-chart-empty">Log at least 2 weigh-ins to see your trend.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Strength — max weight per session</div>
+        <select id="str-select" class="input" style="margin-bottom:12px"></select>
+        <div class="chart-wrap"><canvas id="str-chart"></canvas></div>
+        <div class="chart-empty" id="str-chart-empty">Complete at least 2 sessions with this exercise to see progress.</div>
+      </div>
+    </div>
+
+    <!-- NUTRITION -->
+    <div id="screen-nutrition" class="screen">
+      <div class="ph"><span class="ph-title">Nutrition</span><span class="ph-sub" id="n-date"></span></div>
+
+      <!-- Macro totals -->
+      <div class="macro-grid">
+        <div class="macro-box">
+          <div class="macro-val" id="n-cal">0</div>
+          <div class="macro-lbl">Calories</div>
+          <div class="macro-tgt" id="n-cal-tgt">/ 2200 kcal</div>
+        </div>
+        <div class="macro-box">
+          <div class="macro-val" id="n-pro" style="color:var(--green)">0g</div>
+          <div class="macro-lbl">Protein</div>
+          <div class="macro-tgt" id="n-pro-tgt">0 / 200g</div>
+        </div>
+        <div class="macro-box">
+          <div class="macro-val" id="n-carb" style="color:var(--blue)">0g</div>
+          <div class="macro-lbl">Carbs</div>
+          <div class="macro-tgt" id="n-carb-tgt">0 / 200g</div>
+        </div>
+        <div class="macro-box">
+          <div class="macro-val" id="n-fat" style="color:#e87a4b">0g</div>
+          <div class="macro-lbl">Fat</div>
+          <div class="macro-tgt" id="n-fat-tgt">0 / 70g</div>
+        </div>
+      </div>
+
+      <!-- Progress bars -->
+      <div class="card">
+        <div class="bar-row">
+          <div class="bar-labels"><span>Calories</span><span id="bar-cal-lbl"></span></div>
+          <div class="bar-track"><div class="bar-fill bar-cal" id="bar-cal" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-labels"><span style="color:var(--green)">Protein</span><span id="bar-pro-lbl"></span></div>
+          <div class="bar-track"><div class="bar-fill bar-pro" id="bar-pro" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-labels"><span style="color:var(--blue)">Carbs</span></div>
+          <div class="bar-track"><div class="bar-fill bar-carb" id="bar-carb" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row" style="margin-bottom:0">
+          <div class="bar-labels"><span style="color:#e87a4b">Fat</span></div>
+          <div class="bar-track"><div class="bar-fill bar-fat" id="bar-fat" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <!-- Add food -->
+      <div class="card">
+        <div class="card-title">Add food</div>
+        <div class="food-form">
+          <input id="f-name" class="input" type="text" placeholder="Food name">
+          <div class="row2">
+            <div><label class="form-lbl">Calories (kcal)</label><input id="f-cal" class="input" type="number" inputmode="decimal" placeholder="0"></div>
+            <div><label class="form-lbl">Protein (g)</label><input id="f-pro" class="input" type="number" inputmode="decimal" placeholder="0"></div>
+          </div>
+          <div class="row2">
+            <div><label class="form-lbl">Carbs (g)</label><input id="f-carb" class="input" type="number" inputmode="decimal" placeholder="0"></div>
+            <div><label class="form-lbl">Fat (g)</label><input id="f-fat" class="input" type="number" inputmode="decimal" placeholder="0"></div>
+          </div>
+          <button class="btn btn-primary btn-block" id="btn-add-food">Add</button>
+        </div>
+      </div>
+
+      <!-- Today's log -->
+      <div class="card">
+        <div class="card-title">Today's log</div>
+        <div id="food-log"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="screen-settings" class="screen">
+      <div class="ph"><span class="ph-title">Settings</span></div>
+
+      <div class="card">
+        <div class="card-title">Workout</div>
+        <div class="setting">
+          <div>
+            <div class="setting-lbl">Sets per exercise</div>
+            <div class="setting-sub">Applied to both exercises in each superset</div>
+          </div>
+          <div class="stepper">
+            <button class="step-btn" id="sets-minus">−</button>
+            <span class="step-val" id="sets-val">3</span>
+            <button class="step-btn" id="sets-plus">+</button>
+          </div>
+        </div>
+        <div class="setting">
+          <div>
+            <div class="setting-lbl">Rest timer</div>
+            <div class="setting-sub">Auto-starts after each set is logged</div>
+          </div>
+          <div class="stepper">
+            <button class="step-btn" id="rest-minus">−</button>
+            <span class="step-val" id="rest-val">75s</span>
+            <button class="step-btn" id="rest-plus">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Daily targets</div>
+        <div class="form-group">
+          <label class="form-lbl">Calories (kcal)</label>
+          <input id="cal-in" class="input" type="number" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label class="form-lbl">Protein (g)</label>
+          <input id="pro-in" class="input" type="number" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label class="form-lbl">Carbs (g)</label>
+          <input id="carb-in" class="input" type="number" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label class="form-lbl">Fat (g)</label>
+          <input id="fat-in" class="input" type="number" inputmode="numeric">
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-primary" id="btn-save-targets">Save targets</button>
+          <span id="save-ok" style="display:none;color:var(--green);font-size:14px">✓ Saved</span>
+        </div>
+      </div>
+
+      <div class="card" id="install-row" style="display:none;align-items:center;justify-content:space-between">
+        <div>
+          <div class="setting-lbl">Install app</div>
+          <div class="setting-sub">Add to home screen for best experience</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-install">Install</button>
+      </div>
+
+      <div style="text-align:center;padding:20px 0;color:var(--muted);font-size:12px">
+        Lewis's Training Log · All data stored on this device
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- ── BOTTOM NAV ─────────────────────────────────────────── -->
+  <nav id="nav">
+    <button class="nav-btn active" data-s="today">
+      <span class="ni">🏠</span><span>Today</span>
+    </button>
+    <button class="nav-btn" data-s="workout">
+      <span class="ni">🏋️</span><span>Workout</span>
+    </button>
+    <button class="nav-btn" data-s="history">
+      <span class="ni">📋</span><span>History</span>
+    </button>
+    <button class="nav-btn" data-s="progress">
+      <span class="ni">📈</span><span>Progress</span>
+    </button>
+    <button class="nav-btn" data-s="nutrition">
+      <span class="ni">🥗</span><span>Nutrition</span>
+    </button>
+    <button class="nav-btn" data-s="settings">
+      <span class="ni">⚙️</span><span>Settings</span>
+    </button>
+  </nav>
+
+</div><!-- /app -->
+
+<!-- ── ACTIVE WORKOUT OVERLAY ─────────────────────────────── -->
+<div id="workout-active">
+  <div class="wo-header">
+    <div class="wo-title" id="wo-title">Workout</div>
+    <div class="wo-timer" id="wo-elapsed">00:00</div>
+  </div>
+  <div class="wo-body" id="wo-body"></div>
+  <div class="wo-footer" id="wo-footer">
+    <button class="btn btn-secondary btn-sm" id="btn-cancel-wo" style="flex:0 0 auto">✕ Cancel</button>
+    <button class="btn btn-primary btn-block" id="btn-finish">Finish Workout</button>
+  </div>
+</div>
+
+<!-- ── REST TIMER ─────────────────────────────────────────── -->
+<div id="rest-timer">
+  <div class="rt-time" id="rt-time">01:15</div>
+  <div class="rt-lbl">Rest — next set coming up</div>
+  <button class="btn btn-secondary btn-sm" id="btn-skip-rest">Skip</button>
+</div>
+
+<!-- ── FORM GUIDE MODAL ───────────────────────────────────── -->
+<div id="fg-modal">
+  <div class="fg-sheet">
+    <div class="fg-title" id="fg-title"></div>
+    <div class="fg-muscles" id="fg-muscles"></div>
+    <div class="fg-section">
+      <h4>Setup</h4>
+      <p id="fg-setup"></p>
+    </div>
+    <div class="fg-section">
+      <h4>Key cues</h4>
+      <ul id="fg-cues"></ul>
+    </div>
+    <div class="fg-section">
+      <h4>Common mistakes</h4>
+      <ul id="fg-mistakes"></ul>
+    </div>
+    <div class="fg-note" id="fg-note" style="display:none"></div>
+    <button class="btn btn-secondary btn-block" id="btn-close-fg" style="margin-top:16px">Close</button>
+  </div>
+</div>
+
+<!-- ── CYCLING MODAL ──────────────────────────────────────── -->
+<div id="cycling-modal" class="modal">
+  <div class="modal-sheet">
+    <div class="modal-title">🚴 Log Cycling Session</div>
+    <div class="grid-3">
+      <div class="form-group">
+        <label class="form-lbl">Duration (min)</label>
+        <input id="cy-dur" class="input" type="number" inputmode="numeric" placeholder="30">
+      </div>
+      <div class="form-group">
+        <label class="form-lbl">Distance (km)</label>
+        <input id="cy-dist" class="input" type="number" inputmode="decimal" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label class="form-lbl">Calories</label>
+        <input id="cy-cal" class="input" type="number" inputmode="numeric" placeholder="0">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-secondary" id="btn-cancel-cycling">Cancel</button>
+      <button class="btn btn-primary btn-block" id="btn-save-cycling">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SCRIPTS ────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+  // Set today's date subtitle
+  document.getElementById('date-sub').textContent =
+    new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+  document.getElementById('n-date').textContent =
+    new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>
