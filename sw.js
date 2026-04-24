@@ -1,9 +1,9 @@
 const CACHE = 'lgt-v1';
 const ASSETS = [
-  '/', '/index.html',
-  '/css/app.css',
-  '/js/data.js', '/js/db.js', '/js/app.js',
-  '/manifest.json'
+  '/gym-app/', '/gym-app/index.html',
+  '/gym-app/css/app.css',
+  '/gym-app/js/data.js', '/gym-app/js/db.js', '/gym-app/js/app.js',
+  '/gym-app/manifest.json'
 ];
 
 self.addEventListener('install', e =>
