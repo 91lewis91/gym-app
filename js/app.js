@@ -1,7 +1,9 @@
-// ── Settings (persisted in localStorage) ─────────────────────────────────────
+// ── Settings ──────────────────────────────────────────────────────────────────
 let settings = Object.assign({
   setsPerPair: 3,
   restSeconds: 75,
+  heightCm: 183,
+  goalWeight: 90,
   calorieTarget: 2200,
   proteinTarget: 200,
   carbTarget: 200,
@@ -14,9 +16,10 @@ function saveSettings() {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let activeWorkout = null;
-let restInterval = null;
-let woInterval = null;
-let weightChart = null;
+let restInterval  = null;
+let woInterval    = null;
+let weightChart   = null;
+let bfChart       = null;
 let strengthChart = null;
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -26,9 +29,7 @@ function navigateTo(id) {
   document.getElementById('screen-' + id).classList.add('active');
   document.querySelector(`.nav-btn[data-s="${id}"]`).classList.add('active');
   if (id === 'today')    renderToday();
-  if (id === 'workout')  renderWorkoutSelect();
-  if (id === 'history')  renderHistory();
-  if (id === 'progress') renderProgress();
+  if (id === 'stats')    renderStats();
   if (id === 'nutrition')renderNutrition();
   if (id === 'settings') renderSettings();
 }
@@ -37,6 +38,17 @@ document.querySelectorAll('.nav-btn').forEach(b =>
   b.addEventListener('click', () => navigateTo(b.dataset.s))
 );
 
+// Stats sub-tabs
+document.querySelectorAll('.sub-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+    if (tab.dataset.panel === 'charts') renderCharts();
+  });
+});
+
 // ── TODAY ─────────────────────────────────────────────────────────────────────
 async function renderToday() {
   const hour = new Date().getHours();
@@ -44,24 +56,117 @@ async function renderToday() {
   document.getElementById('greeting').textContent = greet + ', Lewis 👋';
 
   const next = getNextProgram();
-  document.getElementById('today-name').textContent = next.emoji + ' ' + next.name;
+  document.getElementById('today-name').textContent    = next.emoji + ' ' + next.name;
   document.getElementById('today-muscles').textContent = next.muscles;
 
   const workouts = await DB.getWorkouts();
   const week = startOfWeek();
-  document.getElementById('stat-week').textContent  = workouts.filter(w => w.date >= week).length;
-  document.getElementById('stat-total').textContent = workouts.length;
+  document.getElementById('stat-week').textContent   = workouts.filter(w => w.date >= week).length;
+  document.getElementById('stat-total').textContent  = workouts.length;
   document.getElementById('stat-streak').textContent = calcStreak(workouts);
 
-  const metric = await DB.getTodayMetric();
-  if (metric) {
-    document.getElementById('weight-today').textContent = metric.weight;
-    document.getElementById('weight-logged').style.display = 'flex';
-    document.getElementById('weight-log-form').style.display = 'none';
-  } else {
-    document.getElementById('weight-logged').style.display = 'none';
-    document.getElementById('weight-log-form').style.display = 'flex';
+  await renderMetricsDashboard();
+}
+
+async function renderMetricsDashboard() {
+  const all = await DB.getMetrics();
+  const sorted = all.sort((a, b) => b.date - a.date);
+  const latest = sorted[0] || null;
+  const prev   = sorted[1] || null;
+
+  const placeholder = document.getElementById('metrics-placeholder');
+
+  if (!latest) {
+    placeholder.style.display = 'block';
+    return;
   }
+  placeholder.style.display = 'none';
+
+  // Weight
+  setMetricTile('m-weight', latest.weight, prev?.weight, 'kg', false);
+
+  // BMI
+  const h = settings.heightCm / 100;
+  const bmi = latest.weight ? +(latest.weight / (h * h)).toFixed(1) : null;
+  const prevBmi = prev?.weight ? +(prev.weight / (h * h)).toFixed(1) : null;
+  if (bmi) {
+    const bmiEl = document.getElementById('bmi-val');
+    bmiEl.textContent = bmi;
+    bmiEl.className = 'metric-val ' + (bmi < 18.5 ? 'warn' : bmi < 25 ? 'good' : bmi < 30 ? 'warn' : 'bad');
+    document.getElementById('bmi-label').textContent = bmiLabel(bmi);
+    document.getElementById('bmi-bar-wrap').style.display = 'block';
+    // Position cursor: range 15–35 = 100%
+    const pct = Math.max(0, Math.min(100, (bmi - 15) / 20 * 100));
+    document.getElementById('bmi-cursor').style.left = pct + '%';
+    if (prevBmi) {
+      const diff = (bmi - prevBmi).toFixed(1);
+      const isGood = diff < 0;
+      document.getElementById('bmi-trend').innerHTML =
+        `<span class="${isGood ? 'trend-down-good' : 'trend-up-bad'}">${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)}</span>`;
+    }
+  }
+
+  // Body fat
+  setMetricTile('m-bf', latest.bodyFat, prev?.bodyFat, '%', false, bfClass(latest.bodyFat));
+
+  // Muscle mass
+  setMetricTile('m-muscle', latest.muscleMass, prev?.muscleMass, 'kg', true);
+
+  // Fat-free body weight
+  setMetricTile('m-ffbw', latest.fatFreeWeight, prev?.fatFreeWeight, 'kg', true);
+
+  // Subcutaneous fat
+  setMetricTile('m-subcut', latest.subcutaneousFat, prev?.subcutaneousFat, '%', false);
+
+  // Goal banner
+  if (settings.goalWeight && latest.weight) {
+    const diff = (latest.weight - settings.goalWeight).toFixed(1);
+    const banner = document.getElementById('goal-banner');
+    const text   = document.getElementById('goal-text');
+    if (diff > 0) {
+      banner.style.display = 'flex';
+      text.innerHTML = `<strong>${diff} kg</strong> to your goal weight of ${settings.goalWeight} kg — keep going!`;
+    } else {
+      banner.style.display = 'flex';
+      text.innerHTML = `🏆 <strong>Goal reached!</strong> You're at or below ${settings.goalWeight} kg`;
+    }
+  }
+}
+
+function setMetricTile(id, val, prevVal, unit, higherIsBetter, colorClass) {
+  const el = document.getElementById(id);
+  const trendEl = document.getElementById(id + '-trend');
+  if (!el) return;
+
+  if (val == null || val === undefined) { el.textContent = '—'; return; }
+
+  el.textContent = val + unit;
+  if (colorClass) el.className = 'metric-val ' + colorClass;
+
+  if (trendEl && prevVal != null) {
+    const diff = (val - prevVal).toFixed(1);
+    const isUp = diff > 0;
+    const isGood = higherIsBetter ? isUp : !isUp;
+    const cls = isGood ? (isUp ? 'trend-up-good' : 'trend-down-good') : (isUp ? 'trend-up-bad' : 'trend-down-bad');
+    if (diff !== '0.0') {
+      trendEl.innerHTML = `<span class="${cls}">${isUp ? '▲' : '▼'} ${Math.abs(diff)}${unit}</span>`;
+    }
+  }
+}
+
+function bmiLabel(bmi) {
+  if (bmi < 18.5) return 'Underweight';
+  if (bmi < 25)   return '✓ Healthy range';
+  if (bmi < 30)   return 'Above healthy';
+  return 'High';
+}
+
+function bfClass(bf) {
+  if (!bf) return 'neutral';
+  if (bf < 14) return 'warn';      // essential / athletic
+  if (bf < 18) return 'good';      // fitness range
+  if (bf < 25) return 'neutral';   // average
+  return 'warn';                    // above average
 }
 
 function calcStreak(workouts) {
@@ -77,50 +182,56 @@ function calcStreak(workouts) {
 }
 
 function startOfWeek() {
-  const d = new Date();
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate() - d.getDay());
+  const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - d.getDay());
   return d.getTime();
 }
 
 function dayFloor(ts) {
-  const d = new Date(ts);
-  d.setHours(0,0,0,0);
-  return d.getTime();
+  const d = new Date(ts); d.setHours(0,0,0,0); return d.getTime();
 }
 
 function getNextProgram() {
   const order = ['push','pull','legs'];
   const last = localStorage.getItem('lgt-last-prog');
   if (!last) return PROGRAMS[0];
-  const i = order.indexOf(last);
-  return PROGRAMS[(i + 1) % 3];
+  return PROGRAMS[(order.indexOf(last) + 1) % 3];
 }
 
-document.getElementById('btn-start-next').addEventListener('click', () => {
-  startWorkout(getNextProgram().id);
-});
+document.getElementById('btn-start-next').addEventListener('click', () =>
+  startWorkout(getNextProgram().id)
+);
 
-document.getElementById('btn-log-weight').addEventListener('click', async () => {
-  const val = parseFloat(document.getElementById('weight-in').value);
-  if (!val || val < 30 || val > 300) return alert('Enter a valid weight (kg)');
-  await DB.saveMetric({ weight: val });
-  document.getElementById('weight-in').value = '';
+// ── Body Metrics Modal ────────────────────────────────────────────────────────
+document.getElementById('btn-open-metrics').addEventListener('click', () => {
+  document.getElementById('metrics-modal').classList.add('open');
+});
+document.getElementById('btn-cancel-metrics').addEventListener('click', () =>
+  document.getElementById('metrics-modal').classList.remove('open')
+);
+
+document.getElementById('btn-save-metrics').addEventListener('click', async () => {
+  const weight = parseFloat(document.getElementById('m-in-weight').value);
+  if (!weight || weight < 30 || weight > 300) {
+    document.getElementById('m-in-weight').focus(); return;
+  }
+  await DB.saveMetric({
+    weight,
+    bodyFat:        parseFloat(document.getElementById('m-in-bf').value)       || null,
+    muscleMass:     parseFloat(document.getElementById('m-in-muscle').value)    || null,
+    fatFreeWeight:  parseFloat(document.getElementById('m-in-ffbw').value)      || null,
+    subcutaneousFat:parseFloat(document.getElementById('m-in-subcut').value)    || null,
+    visceralFat:    parseFloat(document.getElementById('m-in-visceral').value)  || null
+  });
+  ['m-in-weight','m-in-bf','m-in-muscle','m-in-ffbw','m-in-subcut','m-in-visceral']
+    .forEach(id => document.getElementById(id).value = '');
+  document.getElementById('metrics-modal').classList.remove('open');
   renderToday();
 });
 
-document.getElementById('btn-reweight').addEventListener('click', () => {
-  document.getElementById('weight-logged').style.display = 'none';
-  document.getElementById('weight-log-form').style.display = 'flex';
-});
-
 // ── WORKOUT SELECT ────────────────────────────────────────────────────────────
-function renderWorkoutSelect() {}
-
 document.querySelectorAll('.prog-card').forEach(card =>
   card.addEventListener('click', () => startWorkout(card.dataset.prog))
 );
-
 document.getElementById('btn-log-cycling').addEventListener('click', () =>
   document.getElementById('cycling-modal').classList.add('open')
 );
@@ -134,7 +245,6 @@ async function startWorkout(programId) {
       lastSets[exId] = await DB.getLastSetsForExercise(exId);
 
   activeWorkout = { program, startTime: Date.now(), lastSets };
-
   renderActiveWorkout();
   document.getElementById('workout-active').classList.add('open');
   document.getElementById('wo-footer').style.display = 'flex';
@@ -151,13 +261,11 @@ function tickWoTimer() {
 function renderActiveWorkout() {
   const { program, lastSets } = activeWorkout;
   document.getElementById('wo-title').textContent = program.emoji + ' ' + program.name;
-
   const body = document.getElementById('wo-body');
   body.innerHTML = '';
 
   program.pairs.forEach((pair, pi) => {
     const sec = document.createElement('div');
-    sec.className = 'pair-section';
     sec.innerHTML = `
       <div class="pair-header">
         <span class="pair-lbl">Superset ${pi + 1} of ${program.pairs.length}</span>
@@ -165,9 +273,9 @@ function renderActiveWorkout() {
       </div>`;
 
     pair.forEach(exId => {
-      const ex = EXERCISES[exId];
+      const ex   = EXERCISES[exId];
       const prev = lastSets[exId] || [];
-      const ol = overloadSuggestion(ex, prev);
+      const ol   = overloadSuggestion(ex, prev);
 
       const block = document.createElement('div');
       block.className = 'ex-block';
@@ -175,35 +283,36 @@ function renderActiveWorkout() {
 
       let rows = `
         <div class="set-cols">
-          <span></span><span>Weight</span><span>Reps</span><span>Log</span>
+          <span></span><span>Weight kg</span><span>Reps</span><span>✓</span><span>F</span>
         </div>`;
 
       for (let i = 0; i < settings.setsPerPair; i++) {
-        const p = prev[i];
+        const p    = prev[i];
         const sugW = ol ? ol.weight : (p ? p.weight : '');
         const sugR = p ? p.reps : ex.repsMin;
         rows += `
           <div class="set-row" data-i="${i}">
-            <span class="set-num">${i+1}</span>
+            <span class="set-num">${i + 1}</span>
             <input class="set-in w-in" type="number" inputmode="decimal"
                    placeholder="kg" value="${sugW}" data-ex="${exId}" data-i="${i}">
             <input class="set-in r-in" type="number" inputmode="numeric"
-                   placeholder="reps" value="${sugR}" data-ex="${exId}" data-i="${i}">
+                   placeholder="${ex.repsMin}" value="${sugR}" data-ex="${exId}" data-i="${i}">
             <button class="log-btn" data-ex="${exId}" data-i="${i}">✓</button>
+            <button class="fail-btn" data-ex="${exId}" data-i="${i}" title="Taken to failure">F</button>
           </div>
-          ${p ? `<div class="prev-hint" style="grid-column:2/4;font-size:11px;color:var(--muted);text-align:center;margin-top:-4px;margin-bottom:4px">Last: ${p.weight}kg × ${p.reps}</div>` : ''}`;
+          ${p ? `<div class="prev-hint">Last: ${p.weight} kg × ${p.reps} reps</div>` : '<div style="height:4px"></div>'}`;
       }
 
       block.innerHTML = `
         <div class="ex-hdr">
           <div>
             <div class="ex-name">${ex.name}</div>
-            <div class="ex-muscles">${ex.muscles.split('(')[0].trim().split('·')[0].trim()}</div>
+            <div class="ex-muscles">${ex.muscles.split('·')[0].replace(/\(.*\)/, '').trim()}</div>
           </div>
           <button class="info-btn" data-ex="${exId}">ℹ Info</button>
         </div>
-        ${ol ? `<div class="ol-badge">⬆ Suggest ${ol.weight}kg today</div>` : ''}
-        <div class="target-lbl">${settings.setsPerPair} sets · ${ex.repsMin}–${ex.repsMax} reps target</div>
+        ${ol ? `<div class="ol-badge">⬆ Try ${ol.weight} kg — you earned it</div>` : ''}
+        <div class="target-lbl">Target: ${settings.setsPerPair} sets · ${ex.repsMin}–${ex.repsMax} reps · F = taken to failure</div>
         ${rows}`;
 
       sec.appendChild(block);
@@ -212,37 +321,24 @@ function renderActiveWorkout() {
     body.appendChild(sec);
   });
 
-  // Attach listeners
+  // Log button: tap once = done (green), starts rest timer
   body.querySelectorAll('.log-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const row = btn.closest('.set-row');
       const wIn = row.querySelector('.w-in');
       const rIn = row.querySelector('.r-in');
       if (!wIn.value || !rIn.value) { wIn.focus(); return; }
-
-      if (btn.classList.contains('done')) {
-        // Second tap = mark as failure
-        btn.classList.remove('done');
-        btn.classList.add('fail');
-        btn.textContent = 'FAIL';
-        wIn.classList.remove('done');
-        rIn.classList.remove('done');
-      } else if (btn.classList.contains('fail')) {
-        // Third tap = reset
-        btn.classList.remove('fail');
-        btn.textContent = '✓';
-        wIn.classList.remove('done');
-        rIn.classList.remove('done');
-      } else {
-        // First tap = done
-        btn.classList.add('done');
-        btn.textContent = '✓';
-        wIn.classList.add('done');
-        rIn.classList.add('done');
-        startRestTimer();
-      }
+      const isDone = btn.classList.toggle('done');
+      wIn.classList.toggle('done', isDone);
+      rIn.classList.toggle('done', isDone);
+      if (isDone) startRestTimer();
     });
   });
+
+  // Fail button: independent toggle, red when active
+  body.querySelectorAll('.fail-btn').forEach(btn =>
+    btn.addEventListener('click', () => btn.classList.toggle('active'))
+  );
 
   body.querySelectorAll('.info-btn').forEach(btn =>
     btn.addEventListener('click', () => showFormGuide(btn.dataset.ex))
@@ -253,22 +349,19 @@ function overloadSuggestion(ex, prevSets) {
   if (!prevSets.length) return null;
   const relevant = prevSets.slice(0, settings.setsPerPair);
   if (relevant.length < settings.setsPerPair) return null;
-  const allHitTop = relevant.every(s => s.reps >= ex.repsMax && !s.toFailure);
-  if (!allHitTop) return null;
+  if (!relevant.every(s => s.reps >= ex.repsMax && !s.toFailure)) return null;
   const avgW = relevant.reduce((s, r) => s + r.weight, 0) / relevant.length;
-  const newW = Math.round((avgW + 2.5) * 2) / 2;
-  return { weight: newW };
+  return { weight: Math.round((avgW + 2.5) * 2) / 2 };
 }
 
 // ── Rest timer ────────────────────────────────────────────────────────────────
 function startRestTimer() {
   clearInterval(restInterval);
   let secs = settings.restSeconds;
-  const el = document.getElementById('rest-timer');
+  const el  = document.getElementById('rest-timer');
   const txt = document.getElementById('rt-time');
   el.classList.add('active');
   txt.textContent = fmtTime(secs);
-
   restInterval = setInterval(() => {
     secs--;
     txt.textContent = fmtTime(secs);
@@ -289,22 +382,21 @@ function fmtTime(s) {
   return String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(Math.max(0, s % 60)).padStart(2,'0');
 }
 
-// ── Finish / cancel workout ───────────────────────────────────────────────────
+// ── Save / finish workout ─────────────────────────────────────────────────────
 document.getElementById('btn-finish').addEventListener('click', async () => {
-  if (!confirm('Finish and save workout?')) return;
+  if (!confirm('Finish and save this workout?')) return;
   await saveWorkout();
 });
 
 document.getElementById('btn-cancel-wo').addEventListener('click', () => {
-  if (!confirm('Cancel? Unsaved progress will be lost.')) return;
+  if (!confirm('Cancel? Progress will not be saved.')) return;
   closeWorkout();
 });
 
 async function saveWorkout() {
   const { program, startTime } = activeWorkout;
   const durationMin = Math.max(1, Math.round((Date.now() - startTime) / 60000));
-
-  const workoutId = await DB.saveWorkout({
+  const workoutId   = await DB.saveWorkout({
     programId: program.id, programName: program.name, date: Date.now(), durationMin
   });
 
@@ -314,9 +406,10 @@ async function saveWorkout() {
     block.querySelectorAll('.set-row').forEach((row, i) => {
       const w = parseFloat(row.querySelector('.w-in').value);
       const r = parseInt(row.querySelector('.r-in').value);
-      const btn = row.querySelector('.log-btn');
-      const toFailure = btn.classList.contains('fail');
-      if (w > 0 && r > 0) sets.push({ workoutId, exerciseId: exId, setNumber: i, weight: w, reps: r, toFailure });
+      if (w > 0 && r > 0) sets.push({
+        workoutId, exerciseId: exId, setNumber: i, weight: w, reps: r,
+        toFailure: row.querySelector('.fail-btn').classList.contains('active')
+      });
     });
   });
 
@@ -329,7 +422,7 @@ async function saveWorkout() {
   document.getElementById('wo-body').innerHTML = `
     <div class="complete">
       <div class="complete-icon">🏆</div>
-      <div class="complete-title">Session done!</div>
+      <div class="complete-title">Session complete!</div>
       <div class="complete-stats">${durationMin} min · ${sets.length} sets logged</div>
       <button class="btn btn-primary btn-block" id="btn-wo-done">Back to home</button>
     </div>`;
@@ -349,19 +442,16 @@ function closeWorkout() {
 
 // ── Form guide ────────────────────────────────────────────────────────────────
 function showFormGuide(exId) {
-  const ex = EXERCISES[exId];
-  const fg = ex.formGuide;
-  document.getElementById('fg-title').textContent    = ex.name;
-  document.getElementById('fg-muscles').textContent  = ex.muscles;
-  document.getElementById('fg-setup').textContent    = fg.setup;
-  document.getElementById('fg-cues').innerHTML       = fg.cues.map(c => `<li>${c}</li>`).join('');
-  document.getElementById('fg-mistakes').innerHTML   = fg.mistakes.map(m => `<li>${m}</li>`).join('');
-  const noteEl = document.getElementById('fg-note');
-  if (fg.note) { noteEl.textContent = fg.note; noteEl.style.display = 'block'; }
-  else noteEl.style.display = 'none';
+  const ex = EXERCISES[exId], fg = ex.formGuide;
+  document.getElementById('fg-title').textContent   = ex.name;
+  document.getElementById('fg-muscles').textContent = ex.muscles;
+  document.getElementById('fg-setup').textContent   = fg.setup;
+  document.getElementById('fg-cues').innerHTML      = fg.cues.map(c => `<li>${c}</li>`).join('');
+  document.getElementById('fg-mistakes').innerHTML  = fg.mistakes.map(m => `<li>${m}</li>`).join('');
+  const n = document.getElementById('fg-note');
+  if (fg.note) { n.textContent = fg.note; n.style.display = 'block'; } else n.style.display = 'none';
   document.getElementById('fg-modal').classList.add('open');
 }
-
 document.getElementById('btn-close-fg').addEventListener('click', () =>
   document.getElementById('fg-modal').classList.remove('open')
 );
@@ -369,7 +459,11 @@ document.getElementById('fg-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
 });
 
-// ── HISTORY ───────────────────────────────────────────────────────────────────
+// ── STATS ─────────────────────────────────────────────────────────────────────
+async function renderStats() {
+  await renderHistory();
+}
+
 async function renderHistory() {
   const workouts = await DB.getWorkouts();
   const cycling  = await DB.getCyclingSessions();
@@ -379,7 +473,7 @@ async function renderHistory() {
     container.innerHTML = `
       <div class="empty">
         <div class="empty-icon">📋</div>
-        <div class="empty-text">No sessions yet.<br>Complete your first workout to start your log.</div>
+        <div class="empty-text">No sessions logged yet.<br>Complete your first workout to start your history.</div>
       </div>`;
     return;
   }
@@ -387,21 +481,19 @@ async function renderHistory() {
   let html = '';
   for (const w of workouts) {
     const prog = PROGRAMS.find(p => p.id === w.programId) || {};
-    const d = fmtDate(w.date);
     html += `
       <div class="hist-item">
         <div class="hist-emoji">${prog.emoji || '🏋️'}</div>
         <div class="hist-info">
           <div class="hist-name">${w.programName || prog.name || 'Workout'}</div>
-          <div class="hist-meta">${d}</div>
+          <div class="hist-meta">${fmtDate(w.date)}</div>
         </div>
         <div class="hist-dur">${w.durationMin || '—'} min</div>
       </div>`;
   }
-
   if (cycling.length) {
-    html += `<div class="section-title">Cycling</div>`;
-    for (const s of cycling) {
+    html += `<div class="section-title" style="margin-top:16px">Cycling</div>`;
+    for (const s of cycling)
       html += `
         <div class="hist-item">
           <div class="hist-emoji">🚴</div>
@@ -411,9 +503,7 @@ async function renderHistory() {
           </div>
           <div class="hist-dur">${s.durationMin} min</div>
         </div>`;
-    }
   }
-
   container.innerHTML = html;
 }
 
@@ -421,54 +511,67 @@ function fmtDate(ts) {
   return new Date(ts).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
 }
 
-// ── PROGRESS ──────────────────────────────────────────────────────────────────
-async function renderProgress() {
-  const metrics = await DB.getMetrics();
+// ── Charts ────────────────────────────────────────────────────────────────────
+async function renderCharts() {
+  const metrics  = await DB.getMetrics();
+  const sorted   = metrics.sort((a, b) => a.date - b.date);
 
+  // Weight chart
   const wEmpty = document.getElementById('weight-chart-empty');
-  if (metrics.length >= 2) {
+  if (sorted.length >= 2) {
     wEmpty.style.display = 'none';
-    const labels  = metrics.map(m => new Date(m.date).toLocaleDateString('en-GB', {day:'numeric', month:'short'}));
-    const weights = metrics.map(m => m.weight);
+    const labels  = sorted.map(m => fmtShort(m.date));
+    const weights = sorted.map(m => m.weight);
     const rolling = rollingAvg(weights, 7);
     if (weightChart) weightChart.destroy();
     weightChart = new Chart(document.getElementById('weight-chart'), {
       type: 'line',
-      data: {
-        labels,
-        datasets: [
-          { label: 'Weight',    data: weights, borderColor: '#444',     borderWidth: 1, pointRadius: 2, tension: .3 },
-          { label: '7-day avg', data: rolling, borderColor: '#e8b84b',  borderWidth: 2, pointRadius: 0, tension: .4 }
-        ]
-      },
+      data: { labels, datasets: [
+        { label: 'Weight', data: weights, borderColor: '#253047', borderWidth: 1, pointRadius: 2, tension: .3 },
+        { label: '7-day avg', data: rolling, borderColor: '#4F8EF7', borderWidth: 2, pointRadius: 0, tension: .4 }
+      ]},
       options: chartOpts()
     });
-  } else {
-    wEmpty.style.display = 'block';
-  }
+  } else { wEmpty.style.display = 'block'; }
 
-  // Strength chart — exercise selector
+  // Body fat chart
+  const bfData = sorted.filter(m => m.bodyFat);
+  const bfEmpty = document.getElementById('bf-chart-empty');
+  if (bfData.length >= 2) {
+    bfEmpty.style.display = 'none';
+    if (bfChart) bfChart.destroy();
+    bfChart = new Chart(document.getElementById('bf-chart'), {
+      type: 'line',
+      data: { labels: bfData.map(m => fmtShort(m.date)), datasets: [{
+        label: 'Body Fat %', data: bfData.map(m => m.bodyFat),
+        borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,.1)',
+        borderWidth: 2, pointRadius: 3, fill: true, tension: .3
+      }]},
+      options: { ...chartOpts(), plugins: { legend: { display: false } } }
+    });
+  } else { bfEmpty.style.display = 'block'; }
+
+  // Strength chart
   const sel = document.getElementById('str-select');
-  sel.innerHTML = Object.entries(EXERCISES).map(([id, ex]) =>
-    `<option value="${id}">${ex.name}</option>`).join('');
+  if (!sel.options.length) {
+    sel.innerHTML = Object.entries(EXERCISES).map(([id, ex]) =>
+      `<option value="${id}">${ex.name}</option>`).join('');
+    sel.onchange = () => renderStrengthChart(sel.value);
+  }
   renderStrengthChart(sel.value);
-  sel.onchange = () => renderStrengthChart(sel.value);
 }
 
 async function renderStrengthChart(exId) {
-  const allSets    = await DB.getAllSets();
-  const workouts   = await DB.getWorkouts();
-  const wMap       = Object.fromEntries(workouts.map(w => [w.id, w]));
-  const exSets     = allSets.filter(s => s.exerciseId === exId);
-  const byWorkout  = {};
-  for (const s of exSets) {
-    if (!byWorkout[s.workoutId]) byWorkout[s.workoutId] = [];
-    byWorkout[s.workoutId].push(s);
+  const allSets  = await DB.getAllSets();
+  const workouts = await DB.getWorkouts();
+  const wMap     = Object.fromEntries(workouts.map(w => [w.id, w]));
+  const byWo     = {};
+  for (const s of allSets.filter(s => s.exerciseId === exId)) {
+    (byWo[s.workoutId] = byWo[s.workoutId] || []).push(s);
   }
-  const points = Object.entries(byWorkout)
+  const points = Object.entries(byWo)
     .map(([wid, sets]) => ({ date: wMap[wid]?.date || 0, weight: Math.max(...sets.map(s => s.weight)) }))
-    .filter(p => p.date)
-    .sort((a, b) => a.date - b.date);
+    .filter(p => p.date).sort((a, b) => a.date - b.date);
 
   if (strengthChart) strengthChart.destroy();
   const empty = document.getElementById('str-chart-empty');
@@ -477,31 +580,33 @@ async function renderStrengthChart(exId) {
   strengthChart = new Chart(document.getElementById('str-chart'), {
     type: 'line',
     data: {
-      labels: points.map(p => new Date(p.date).toLocaleDateString('en-GB', {day:'numeric', month:'short'})),
-      datasets: [{
-        label: 'Max weight (kg)', data: points.map(p => p.weight),
-        borderColor: '#4be89a', backgroundColor: 'rgba(75,232,154,.1)',
-        borderWidth: 2, pointRadius: 4, fill: true, tension: .3
-      }]
+      labels: points.map(p => fmtShort(p.date)),
+      datasets: [{ label: 'Max kg', data: points.map(p => p.weight),
+        borderColor: '#22D3A5', backgroundColor: 'rgba(34,211,165,.1)',
+        borderWidth: 2, pointRadius: 4, fill: true, tension: .3 }]
     },
     options: { ...chartOpts(), plugins: { legend: { display: false } } }
   });
 }
 
+function fmtShort(ts) {
+  return new Date(ts).toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+}
+
 function rollingAvg(arr, w) {
   return arr.map((_, i) => {
     const sl = arr.slice(Math.max(0, i - w + 1), i + 1);
-    return Math.round(sl.reduce((a,b) => a+b,0) / sl.length * 10) / 10;
+    return Math.round(sl.reduce((a, b) => a + b, 0) / sl.length * 10) / 10;
   });
 }
 
 function chartOpts() {
   return {
     responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: '#888', font: { size: 11 } } } },
+    plugins: { legend: { labels: { color: '#5E7296', font: { size: 11 } } } },
     scales: {
-      x: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: '#222' } },
-      y: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: '#222' } }
+      x: { ticks: { color: '#3a4d6b', font: { size: 10 } }, grid: { color: '#1C2538' } },
+      y: { ticks: { color: '#3a4d6b', font: { size: 10 } }, grid: { color: '#1C2538' } }
     }
   };
 }
@@ -509,12 +614,12 @@ function chartOpts() {
 // ── NUTRITION ─────────────────────────────────────────────────────────────────
 async function renderNutrition() {
   const entries = await DB.getTodayNutrition();
-  const tot = entries.reduce((a,e) => ({
+  const tot = entries.reduce((a, e) => ({
     cal: a.cal + (e.calories||0), pro: a.pro + (e.protein||0),
     carb: a.carb + (e.carbs||0),  fat: a.fat + (e.fat||0)
   }), { cal:0, pro:0, carb:0, fat:0 });
 
-  const pct = (v, t) => Math.min(100, Math.round(v/t*100)) + '%';
+  const pct = (v, t) => Math.min(100, Math.round(v / t * 100)) + '%';
 
   document.getElementById('n-cal').textContent  = Math.round(tot.cal);
   document.getElementById('n-pro').textContent  = Math.round(tot.pro)  + 'g';
@@ -524,7 +629,6 @@ async function renderNutrition() {
   document.getElementById('n-pro-tgt').textContent  = `${Math.round(tot.pro)}g / ${settings.proteinTarget}g`;
   document.getElementById('n-carb-tgt').textContent = `${Math.round(tot.carb)}g / ${settings.carbTarget}g`;
   document.getElementById('n-fat-tgt').textContent  = `${Math.round(tot.fat)}g / ${settings.fatTarget}g`;
-
   document.getElementById('bar-cal').style.width  = pct(tot.cal,  settings.calorieTarget);
   document.getElementById('bar-pro').style.width  = pct(tot.pro,  settings.proteinTarget);
   document.getElementById('bar-carb').style.width = pct(tot.carb, settings.carbTarget);
@@ -568,12 +672,14 @@ document.getElementById('btn-add-food').addEventListener('click', async () => {
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
 function renderSettings() {
-  document.getElementById('sets-val').textContent  = settings.setsPerPair;
-  document.getElementById('rest-val').textContent  = settings.restSeconds + 's';
-  document.getElementById('cal-in').value   = settings.calorieTarget;
-  document.getElementById('pro-in').value   = settings.proteinTarget;
-  document.getElementById('carb-in').value  = settings.carbTarget;
-  document.getElementById('fat-in').value   = settings.fatTarget;
+  document.getElementById('sets-val').textContent = settings.setsPerPair;
+  document.getElementById('rest-val').textContent = settings.restSeconds + 's';
+  document.getElementById('height-in').value      = settings.heightCm;
+  document.getElementById('goal-in').value        = settings.goalWeight;
+  document.getElementById('cal-in').value         = settings.calorieTarget;
+  document.getElementById('pro-in').value         = settings.proteinTarget;
+  document.getElementById('carb-in').value        = settings.carbTarget;
+  document.getElementById('fat-in').value         = settings.fatTarget;
 }
 
 function step(key, delta, min, max) {
@@ -587,13 +693,16 @@ document.getElementById('rest-minus').addEventListener('click', () => step('rest
 document.getElementById('rest-plus').addEventListener('click',  () => step('restSeconds',  15, 30, 180));
 
 document.getElementById('btn-save-targets').addEventListener('click', () => {
-  settings.calorieTarget = parseInt(document.getElementById('cal-in').value)  || 2200;
-  settings.proteinTarget = parseInt(document.getElementById('pro-in').value)  || 200;
-  settings.carbTarget    = parseInt(document.getElementById('carb-in').value) || 200;
-  settings.fatTarget     = parseInt(document.getElementById('fat-in').value)  || 70;
+  settings.heightCm      = parseInt(document.getElementById('height-in').value)  || 183;
+  settings.goalWeight    = parseFloat(document.getElementById('goal-in').value)  || 90;
+  settings.calorieTarget = parseInt(document.getElementById('cal-in').value)     || 2200;
+  settings.proteinTarget = parseInt(document.getElementById('pro-in').value)     || 200;
+  settings.carbTarget    = parseInt(document.getElementById('carb-in').value)    || 200;
+  settings.fatTarget     = parseInt(document.getElementById('fat-in').value)     || 70;
   saveSettings();
-  document.getElementById('save-ok').style.display = 'inline';
-  setTimeout(() => document.getElementById('save-ok').style.display = 'none', 2000);
+  const ok = document.getElementById('save-ok');
+  ok.style.display = 'inline';
+  setTimeout(() => ok.style.display = 'none', 2000);
 });
 
 // ── CYCLING MODAL ─────────────────────────────────────────────────────────────
