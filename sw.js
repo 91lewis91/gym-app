@@ -1,4 +1,4 @@
-const CACHE = 'lgt-v1';
+const CACHE = 'lgt-v2';
 const ASSETS = [
   '/gym-app/', '/gym-app/index.html',
   '/gym-app/css/app.css',
@@ -6,14 +6,17 @@ const ASSETS = [
   '/gym-app/manifest.json'
 ];
 
-self.addEventListener('install', e =>
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)))
-);
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  self.skipWaiting();
+});
 
 self.addEventListener('activate', e =>
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ))
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => clients.claim())
+  )
 );
 
 self.addEventListener('fetch', e => {
