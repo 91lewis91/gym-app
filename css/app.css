@@ -382,3 +382,61 @@ html, body {
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
 .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 8px; }
 ::-webkit-scrollbar { width: 0; }
+
+/* ── EXPANDABLE HISTORY ──────────────────────────────── */
+.hist-item[data-wid] { cursor: pointer; }
+.hist-item[data-wid]:active { background: var(--surface2); }
+.hist-chevron {
+  font-size: 18px; color: var(--muted); transition: color .15s; flex-shrink: 0;
+}
+.hist-item[data-wid]:hover .hist-chevron { color: var(--accent); }
+
+.hist-detail {
+  display: none; background: var(--surface2);
+  border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 var(--r) var(--r); margin-top: -10px;
+  margin-bottom: 8px; padding: 0;
+}
+.hist-detail.open { display: block; }
+.hist-detail-inner { padding: 12px 14px 14px; }
+.hist-detail-empty { padding: 12px 14px; font-size: 13px; color: var(--muted); }
+
+.hist-ex-name {
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  text-transform: uppercase; letter-spacing: .05em;
+  margin: 10px 0 4px;
+}
+.hist-ex-name:first-child { margin-top: 0; }
+
+.hist-set-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 3px 0; border-bottom: 1px solid var(--border);
+}
+.hist-set-row:last-child { border-bottom: none; }
+.hist-set-num { font-size: 12px; color: var(--muted); min-width: 38px; }
+.hist-set-data { font-size: 14px; font-weight: 500; }
+.hist-fail {
+  background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
+  padding: 1px 5px; border-radius: 4px; margin-left: 4px;
+}
+
+/* ── SUPERSET SETUP NOTE ─────────────────────────────── */
+.pair-note {
+  background: rgba(79,142,247,.1); border: 1px solid rgba(79,142,247,.3);
+  border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;
+  font-size: 12px; color: var(--accent);
+}
+
+/* ── STRENGTH TARGET BADGE ───────────────────────────── */
+.str-target-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(167,139,250,.12); color: var(--purple);
+  border: 1px solid rgba(167,139,250,.4);
+  font-size: 12px; padding: 4px 10px; border-radius: 20px; margin-bottom: 8px;
+}
+
+/* ── METRIC TARGET ───────────────────────────────────── */
+.metric-target {
+  font-size: 11px; color: var(--muted); margin-top: 1px;
+}
+.metric-target-done { color: var(--green); }

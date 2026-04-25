@@ -71,11 +71,13 @@
           <span class="metric-lbl">Body Fat</span>
           <span class="metric-val" id="m-bf">—</span>
           <span class="metric-trend" id="m-bf-trend"></span>
+          <span class="metric-target" id="m-bf-tgt"></span>
         </div>
         <div class="metric-tile">
           <span class="metric-lbl">Muscle Mass</span>
           <span class="metric-val" id="m-muscle">—</span>
           <span class="metric-trend" id="m-muscle-trend"></span>
+          <span class="metric-target" id="m-muscle-tgt"></span>
         </div>
         <div class="metric-tile">
           <span class="metric-lbl">Fat-Free Weight</span>
@@ -281,6 +283,20 @@
           <div class="setting-sub">Shown as progress on home screen</div>
         </div>
         <input id="goal-in" class="input" type="number" inputmode="decimal" style="width:80px;text-align:center">
+      </div>
+      <div class="setting">
+        <div>
+          <div class="setting-lbl">Goal body fat (%)</div>
+          <div class="setting-sub">Target from VeSync readings</div>
+        </div>
+        <input id="goal-bf-in" class="input" type="number" inputmode="decimal" style="width:80px;text-align:center" placeholder="e.g. 18">
+      </div>
+      <div class="setting">
+        <div>
+          <div class="setting-lbl">Goal muscle mass (kg)</div>
+          <div class="setting-sub">Target lean mass from VeSync</div>
+        </div>
+        <input id="goal-muscle-in" class="input" type="number" inputmode="decimal" style="width:80px;text-align:center" placeholder="e.g. 75">
       </div>
     </div>
 

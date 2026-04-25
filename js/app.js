@@ -4,6 +4,8 @@ let settings = Object.assign({
   restSeconds: 75,
   heightCm: 183,
   goalWeight: 90,
+  goalBF: null,
+  goalMuscle: null,
   calorieTarget: 2200,
   proteinTarget: 200,
   carbTarget: 200,
@@ -108,9 +110,29 @@ async function renderMetricsDashboard() {
 
   // Body fat
   setMetricTile('m-bf', latest.bodyFat, prev?.bodyFat, '%', false, bfClass(latest.bodyFat));
+  if (settings.goalBF && latest.bodyFat) {
+    const bfEl = document.getElementById('m-bf-tgt');
+    if (bfEl) {
+      const diff = (latest.bodyFat - settings.goalBF).toFixed(1);
+      bfEl.textContent = diff > 0
+        ? `Goal ${settings.goalBF}% — ${diff}% to go`
+        : `Goal ${settings.goalBF}% — reached!`;
+      bfEl.className = 'metric-target ' + (diff > 0 ? '' : 'metric-target-done');
+    }
+  }
 
   // Muscle mass
   setMetricTile('m-muscle', latest.muscleMass, prev?.muscleMass, 'kg', true);
+  if (settings.goalMuscle && latest.muscleMass) {
+    const mEl = document.getElementById('m-muscle-tgt');
+    if (mEl) {
+      const diff = (settings.goalMuscle - latest.muscleMass).toFixed(1);
+      mEl.textContent = diff > 0
+        ? `Goal ${settings.goalMuscle} kg — ${diff} kg to go`
+        : `Goal ${settings.goalMuscle} kg — reached!`;
+      mEl.className = 'metric-target ' + (diff <= 0 ? 'metric-target-done' : '');
+    }
+  }
 
   // Fat-free body weight
   setMetricTile('m-ffbw', latest.fatFreeWeight, prev?.fatFreeWeight, 'kg', true);
@@ -241,7 +263,7 @@ async function startWorkout(programId) {
   const program = PROGRAMS.find(p => p.id === programId);
   const lastSets = {};
   for (const pair of program.pairs)
-    for (const exId of pair)
+    for (const exId of pair.exercises)
       lastSets[exId] = await DB.getLastSetsForExercise(exId);
 
   activeWorkout = { program, startTime: Date.now(), lastSets };
@@ -266,13 +288,16 @@ function renderActiveWorkout() {
 
   program.pairs.forEach((pair, pi) => {
     const sec = document.createElement('div');
+    const noteHtml = pair.note
+      ? `<div class="pair-note">⚙ ${pair.note}</div>`
+      : '';
     sec.innerHTML = `
       <div class="pair-header">
         <span class="pair-lbl">Superset ${pi + 1} of ${program.pairs.length}</span>
         <span class="pair-chip">SS</span>
-      </div>`;
+      </div>${noteHtml}`;
 
-    pair.forEach(exId => {
+    pair.exercises.forEach(exId => {
       const ex   = EXERCISES[exId];
       const prev = lastSets[exId] || [];
       const ol   = overloadSuggestion(ex, prev);
@@ -288,7 +313,7 @@ function renderActiveWorkout() {
 
       for (let i = 0; i < settings.setsPerPair; i++) {
         const p    = prev[i];
-        const sugW = ol ? ol.weight : (p ? p.weight : '');
+        const sugW = ol ? ol.weight : (p ? p.weight : (ex.defaultWeight || ''));
         const sugR = p ? p.reps : ex.repsMin;
         rows += `
           <div class="set-row" data-i="${i}">
@@ -303,6 +328,11 @@ function renderActiveWorkout() {
           ${p ? `<div class="prev-hint">Last: ${p.weight} kg × ${p.reps} reps</div>` : '<div style="height:4px"></div>'}`;
       }
 
+      const maxCurrent = prev.length ? Math.max(...prev.map(s => s.weight)) : null;
+      const tgtBadge = ex.strengthTarget && maxCurrent && maxCurrent < ex.strengthTarget
+        ? `<div class="str-target-badge">🎯 Intermediate goal: ${ex.strengthTarget} kg</div>`
+        : '';
+
       block.innerHTML = `
         <div class="ex-hdr">
           <div>
@@ -312,6 +342,7 @@ function renderActiveWorkout() {
           <button class="info-btn" data-ex="${exId}">ℹ Info</button>
         </div>
         ${ol ? `<div class="ol-badge">⬆ Try ${ol.weight} kg — you earned it</div>` : ''}
+        ${tgtBadge}
         <div class="target-lbl">Target: ${settings.setsPerPair} sets · ${ex.repsMin}–${ex.repsMax} reps · F = taken to failure</div>
         ${rows}`;
 
@@ -482,14 +513,15 @@ async function renderHistory() {
   for (const w of workouts) {
     const prog = PROGRAMS.find(p => p.id === w.programId) || {};
     html += `
-      <div class="hist-item">
+      <div class="hist-item" data-wid="${w.id}" data-prog="${w.programId || ''}">
         <div class="hist-emoji">${prog.emoji || '🏋️'}</div>
         <div class="hist-info">
           <div class="hist-name">${w.programName || prog.name || 'Workout'}</div>
-          <div class="hist-meta">${fmtDate(w.date)}</div>
+          <div class="hist-meta">${fmtDate(w.date)} · ${w.durationMin || '—'} min</div>
         </div>
-        <div class="hist-dur">${w.durationMin || '—'} min</div>
-      </div>`;
+        <span class="hist-chevron">›</span>
+      </div>
+      <div class="hist-detail" data-wid="${w.id}" data-prog="${w.programId || ''}"></div>`;
   }
   if (cycling.length) {
     html += `<div class="section-title" style="margin-top:16px">Cycling</div>`;
@@ -505,6 +537,55 @@ async function renderHistory() {
         </div>`;
   }
   container.innerHTML = html;
+
+  container.onclick = async (e) => {
+    const item = e.target.closest('.hist-item[data-wid]');
+    if (!item) return;
+    const detail = item.nextElementSibling;
+    if (!detail || !detail.classList.contains('hist-detail')) return;
+
+    const isOpen = detail.classList.toggle('open');
+    const chevron = item.querySelector('.hist-chevron');
+    if (chevron) chevron.textContent = isOpen ? '∨' : '›';
+
+    if (isOpen && !detail.dataset.loaded) {
+      detail.dataset.loaded = '1';
+      detail.innerHTML = await loadWorkoutDetail(parseInt(item.dataset.wid), item.dataset.prog);
+    }
+  };
+}
+
+async function loadWorkoutDetail(workoutId, programId) {
+  const sets = await DB.getSetsForWorkout(workoutId);
+  if (!sets.length) return '<div class="hist-detail-empty">No sets recorded.</div>';
+
+  const prog = PROGRAMS.find(p => p.id === programId);
+  const exerciseOrder = prog ? prog.pairs.flatMap(p => p.exercises) : [];
+
+  const byEx = {};
+  for (const s of sets) {
+    (byEx[s.exerciseId] = byEx[s.exerciseId] || []).push(s);
+  }
+
+  const sortedIds = [
+    ...exerciseOrder.filter(id => byEx[id]),
+    ...Object.keys(byEx).filter(id => !exerciseOrder.includes(id))
+  ];
+
+  let html = '<div class="hist-detail-inner">';
+  for (const exId of sortedIds) {
+    const ex = EXERCISES[exId];
+    const exSets = byEx[exId].sort((a, b) => a.setNumber - b.setNumber);
+    html += `<div class="hist-ex-name">${ex ? ex.name : exId}</div>`;
+    for (const s of exSets) {
+      html += `<div class="hist-set-row">
+        <span class="hist-set-num">Set ${s.setNumber + 1}</span>
+        <span class="hist-set-data">${s.weight} kg × ${s.reps} reps${s.toFailure ? ' <span class="hist-fail">F</span>' : ''}</span>
+      </div>`;
+    }
+  }
+  html += '</div>';
+  return html;
 }
 
 function fmtDate(ts) {
@@ -676,6 +757,8 @@ function renderSettings() {
   document.getElementById('rest-val').textContent = settings.restSeconds + 's';
   document.getElementById('height-in').value      = settings.heightCm;
   document.getElementById('goal-in').value        = settings.goalWeight;
+  document.getElementById('goal-bf-in').value     = settings.goalBF || '';
+  document.getElementById('goal-muscle-in').value = settings.goalMuscle || '';
   document.getElementById('cal-in').value         = settings.calorieTarget;
   document.getElementById('pro-in').value         = settings.proteinTarget;
   document.getElementById('carb-in').value        = settings.carbTarget;
@@ -693,9 +776,11 @@ document.getElementById('rest-minus').addEventListener('click', () => step('rest
 document.getElementById('rest-plus').addEventListener('click',  () => step('restSeconds',  15, 30, 180));
 
 document.getElementById('btn-save-targets').addEventListener('click', () => {
-  settings.heightCm      = parseInt(document.getElementById('height-in').value)  || 183;
-  settings.goalWeight    = parseFloat(document.getElementById('goal-in').value)  || 90;
-  settings.calorieTarget = parseInt(document.getElementById('cal-in').value)     || 2200;
+  settings.heightCm      = parseInt(document.getElementById('height-in').value)   || 183;
+  settings.goalWeight    = parseFloat(document.getElementById('goal-in').value)   || 90;
+  settings.goalBF        = parseFloat(document.getElementById('goal-bf-in').value)     || null;
+  settings.goalMuscle    = parseFloat(document.getElementById('goal-muscle-in').value) || null;
+  settings.calorieTarget = parseInt(document.getElementById('cal-in').value)      || 2200;
   settings.proteinTarget = parseInt(document.getElementById('pro-in').value)     || 200;
   settings.carbTarget    = parseInt(document.getElementById('carb-in').value)    || 200;
   settings.fatTarget     = parseInt(document.getElementById('fat-in').value)     || 70;
